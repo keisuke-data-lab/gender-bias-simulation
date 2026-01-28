@@ -1,35 +1,62 @@
-# Gender Bias & Organizational Productivity Simulation
-**採用基準における「無意識のバイアス」が組織能力に与える影響の定量化**
+# ⚖️ Gender Bias ROI Simulator
+**採用バイアスがもたらす「組織IQの損失」と「ダイバーシティの罠」を定量化する数理モデル**
 
-## 📌 Overview
-このプロジェクトは、採用プロセスにおいて「男性の採用基準をわずかに下げる（下駄を履かせる）」というバイアスが存在した場合、組織全体の平均能力（生産性）がどのように低下するかを数理モデルを用いてシミュレーションします。
+[![Open in Streamlit](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://gender-bias-simulation-efntmryjj8pth6vr86vpwn.streamlit.app/)
+![Python](https://img.shields.io/badge/Python-3.9%2B-blue)
+![License](https://img.shields.io/badge/License-MIT-green)
 
-### Key Findings
-* **バイアスの代償**: 男性の採用基準を緩和すると、男性採用比率は急上昇するが、組織全体の平均能力は確実に低下する。
-* **Pew Research シナリオ**: 「女性の方が基礎能力（学歴等）が高い」という現実的なデータ（Pew Research Center）を前提とした場合、公平な採用を行えば女性比率が高くなるのが自然であり、無理に男女同数を目指すバイアスは組織にとって有害である。
+## 📌 Executive Summary
+**「女性の応募が少ないから、男性ばかり採用するのは仕方ない」は、数学的に正しいか？**
 
----
+このシミュレーターは、採用プロセスにおける**「バイアス（下駄）」**と**「市場のパイプライン（応募者比率）」**の関係をモデル化し、無理なジェンダー比率調整が組織の**平均能力（Organizational IQ）**に与える経済的損失を算出します。
 
-## 🛠 Simulation Logic
-* **分布モデル**: 応募者の能力値は正規分布に従うと仮定。
-* **採用プロセス**: 一定の閾値（上位16%相当）を超えた応募者を採用。
-* **バイアス変数 ($\gamma$)**: 男性の採用閾値のみを $\gamma$ だけ引き下げる操作を行う。
-  $$Threshold_{Male} = Threshold_{Fair} - \gamma$$
-
-### Scenarios
-1. **Scenario 1: Equal Ability**
-   男女の能力分布が完全に同じ（$\mu_F = \mu_M$）である理想的な状態。
-2. **Scenario 2: Pew Data (Female Advantage)**
-   大卒以上の若年層において女性の能力平均がやや高い（$\mu_F > \mu_M$）現実的な分布。
+### 🚀 Key Insights
+1.  **バイアスの代償 (The Cost of Bias):**
+    男性比率を維持するために採用基準を引き下げると、組織全体の生産性は急激に低下する。
+2.  **パイプラインの真実 (Pipeline Reality):**
+    たとえ応募者の8割が男性であっても、女性の基礎能力が高い（Pew Researchシナリオ）場合、公正な採用を行えば女性採用比率は応募比率（2割）を上回る。
+3.  **見えない損失 (Invisible Loss):**
+    現状維持（男性優位）のために支払っている「生産性ギャップ」を数値化し、経営リスクとして提示する。
 
 ---
 
-## 🚀 How to Run
-Python環境があれば、以下のコマンドでシミュレーションを実行し、グラフを生成できます。
+## 📊 Simulation Scenarios
+
+本モデルでは、以下の2つの世界を比較検証します。
+
+| Scenario | 概要 | 前提条件 |
+| :--- | :--- | :--- |
+| **A. Equal Ability** | **理想的な世界** | 男女の能力分布に差がない完全な平等状態。<br>(μ_F = μ_M) |
+| **B. Pew Data (Reality)** | **現実のデータ** | 先進国の若年層において、女性の方が高学歴（能力スコアが高い）である傾向を反映。<br>(μ_F > μ_M) |
+
+---
+
+## 🛠 Model Logic (Mathematical Framework)
+
+本シミュレーションは、**切断正規分布 (Truncated Normal Distribution)** の統計的性質を利用しています。
+
+### 1. 採用プロセス
+応募者の能力 $X$ は正規分布 $N(\mu, \sigma^2)$ に従うとし、閾値 $T$ を超えた候補者を採用します。採用者の平均能力 $E[X|X>T]$ は**逆ミルズ比**を用いて算出されます。
+
+### 2. バイアスの定義 ($\gamma$)
+男性の採用基準のみを $\gamma$ (Gamma) だけ引き下げる操作を「バイアス」と定義します。
+$$Threshold_{Male} = Threshold_{Fair} - \gamma$$
+
+### 3. パイプライン（供給）の考慮
+市場における応募者の男性比率 ($r_m$) を変数として組み込み、最終的な組織構成比をベイズ的に算出します。
+$$Share_{Male} = \frac{r_m \cdot Rate_{Male}}{r_m \cdot Rate_{Male} + (1-r_m) \cdot Rate_{Female}}$$
+
+---
+
+## 💻 How to Run Locally
 
 ```bash
-# 1. 依存ライブラリのインストール
-pip install pandas numpy matplotlib seaborn scipy
+# 1. Clone the repository
+git clone [https://github.com/keisuke-data-lab/gender-bias-simulation.git](https://github.com/keisuke-data-lab/gender-bias-simulation.git)
+cd gender-bias-simulation
 
-# 2. シミュレーション実行
-python gender-bias-simulation/hiring_bias_simulation.py
+# 2. Install dependencies
+pip install -r requirements.txt
+
+# 3. Run the application
+streamlit run app.py
