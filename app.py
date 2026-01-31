@@ -6,14 +6,16 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from typing import Dict, List, Optional
 
-# --- Configuration & Styling ---
+# ==========================================
+# 0. Page Config & Styling
+# ==========================================
 st.set_page_config(
     page_title="Gender Bias ROI Simulator",
     page_icon="⚖️",
     layout="wide"
 )
 
-# Custom CSS for Branding Footer
+# Custom CSS: Footer, Metrics, and Peak Highlight
 st.markdown("""
     <style>
     .footer {
@@ -21,102 +23,73 @@ st.markdown("""
         left: 0;
         bottom: 0;
         width: 100%;
-        background-color: #f0f2f6;
-        color: #333;
+        background-color: #f8f9fa;
+        color: #6c757d;
         text-align: center;
         padding: 10px;
-        font-size: 14px;
+        font-size: 12px;
         z-index: 999;
         border-top: 1px solid #ddd;
     }
-    .footer a {
-        color: #0366d6;
-        text-decoration: none;
-        font-weight: bold;
+    .disclaimer {
+        font-size: 12px;
+        color: #666;
+        margin-top: 40px;
+        padding: 15px;
+        background-color: #fff3cd;
+        border-left: 5px solid #ffc107;
+        border-radius: 4px;
     }
-    .main-content {
-        margin-bottom: 60px; /* Footer space */
+    /* Metric styling */
+    [data-testid="stMetricValue"] {
+        font-size: 24px;
     }
     </style>
 """, unsafe_allow_html=True)
 
-# --- Logic Core: Hiring Model ---
-
+# ==========================================
+# 1. Logic Class: Hiring Simulation
+# ==========================================
 class HiringSimulation:
-    """
-    労働市場における採用プロセスとバイアスの影響をシミュレートするクラス。
-    レポート内の「3.1 選択効率性モデル」および「A.1 シミュレーションの前提条件」に基づく。
-    """
-    
     def __init__(self, mu_f: float, mu_m: float, sigma: float, threshold_fair: float):
-        """
-        Args:
-            mu_f (float): 女性候補者の平均能力
-            mu_m (float): 男性候補者の平均能力
-            sigma (float): 能力分布の標準偏差（男女共通と仮定）
-            threshold_fair (float): 公正な採用基準値 (T*)
-        """
         self.mu_f = mu_f
         self.mu_m = mu_m
         self.sigma = sigma
         self.threshold_fair = threshold_fair
 
     def _calculate_truncated_stats(self, mu: float, threshold: float) -> tuple[float, float]:
-        """
-        切断正規分布の統計量を計算する（逆ミルズ比を使用）。
-        Returns:
-            (acceptance_rate, expected_value)
-        """
+        """切断正規分布の統計量（合格率と合格者の平均能力）を計算"""
         alpha = (threshold - mu) / self.sigma
-        
-        # 累積分布関数 (CDF) と 確率密度関数 (PDF)
         cdf = stats.norm.cdf(alpha)
         pdf = stats.norm.pdf(alpha)
-        
         rate = 1 - cdf
         
-        # ゼロ除算回避 (Error Handling)
         if rate <= 1e-9:
             return 0.0, 0.0
             
-        # E[X|X>T] = mu + sigma * (pdf / (1-cdf))
         lambda_val = pdf / rate
         expected_val = mu + self.sigma * lambda_val
-        
         return rate, expected_val
 
-    def run(self, gamma_range: List[float], scenario_name: str, applicant_ratio_m: float = 0.5) -> pd.DataFrame:
-        """
-        指定されたバイアス範囲でシミュレーションを実行する。
-        
-        Args:
-            gamma_range: バイアス係数のリスト
-            scenario_name: シナリオ名
-            applicant_ratio_m: 応募者プールにおける男性の割合 (0.0 - 1.0). Default 0.5.
-        """
+    def run(self, gamma_range: np.ndarray, scenario_name: str, applicant_ratio_m: float = 0.5) -> pd.DataFrame:
         results = []
         applicant_ratio_f = 1.0 - applicant_ratio_m
         
         for gamma in gamma_range:
-            # 男性基準のみ引き下げ (T_M = T* - gamma)
+            # Gamma > 0: 男性基準を下げる（優遇） -> Threshold下がる
+            # Gamma < 0: 男性基準を上げる（厳格化/女性優先） -> Threshold上がる
             threshold_male = self.threshold_fair - gamma
-            threshold_female = self.threshold_fair # 女性基準は固定
-
-            # 女性の統計 (Biasなし)
-            rate_f, avg_f = self._calculate_truncated_stats(self.mu_f, threshold_female)
+            threshold_female = self.threshold_fair
             
-            # 男性の統計 (Biasあり)
+            rate_f, avg_f = self._calculate_truncated_stats(self.mu_f, threshold_female)
             rate_m, avg_m = self._calculate_truncated_stats(self.mu_m, threshold_male)
             
-            # --- 組織全体の集計（母集団の比率を考慮） ---
-            # 実際の採用数(比率) = 応募者割合 * 合格率
             hires_m = applicant_ratio_m * rate_m
             hires_f = applicant_ratio_f * rate_f
             total_hires = hires_m + hires_f
             
             if total_hires > 0:
                 share_m = hires_m / total_hires
-                # 加重平均による組織能力 (Organizational IQ)
                 avg_total = (avg_m * hires_m + avg_f * hires_f) / total_hires
             else:
                 share_m = 0.0
@@ -127,143 +100,281 @@ class HiringSimulation:
                 "Bias_Gamma": gamma,
                 "Org_Avg_Ability": avg_total,
                 "Male_Share": share_m,
+                "Total_Hires_Rate": total_hires, # 採用数（率）も記録
                 "Male_Avg_Ability": avg_m,
-                "Female_Avg_Ability": avg_f,
-                "Male_Threshold": threshold_male
+                "Female_Avg_Ability": avg_f
             })
             
         return pd.DataFrame(results)
 
-# --- Streamlit UI ---
-
-def main():
-    st.title("⚖️ Gender Bias ROI Simulator")
-    st.markdown("""
-    **採用バイアスが組織パフォーマンスに与える経済的損失（ROI悪化）の推計**
+# ==========================================
+# 2. Financial & Analysis Functions
+# ==========================================
+def render_financial_sidebar():
+    st.sidebar.markdown("---")
+    st.sidebar.subheader("💰 Financial Impact Settings")
     
-    本シミュレーターは、採用基準における「男性優遇バイアス（下駄）」が、組織全体の平均能力（生産性）と
-    ジェンダー構成比にどのような構造的変化をもたらすかを数理的に検証します。
+    employee_count = st.sidebar.number_input(
+        "Total Employees (従業員数)", min_value=10, value=100, step=10
+    )
+    revenue_per_emp = st.sidebar.number_input(
+        "Revenue per Employee (1人あたり付加価値/年)", min_value=100, value=1500, step=100
+    ) * 10000 
+    cost_per_hire = st.sidebar.number_input(
+        "Cost per Hire (採用・教育単価)", min_value=10, value=300, step=50
+    ) * 10000
+
+    return employee_count, revenue_per_emp, cost_per_hire
+
+def calculate_financial_loss(df, employee_count, revenue_per_emp, cost_per_hire):
+    processed_frames = []
+    
+    for scenario in df['Scenario'].unique():
+        sub_df = df[df['Scenario'] == scenario].copy()
+        
+        # ベースライン（Bias=0/中立）の能力を取得
+        base_row = sub_df[(sub_df['Bias_Gamma'] >= -0.01) & (sub_df['Bias_Gamma'] <= 0.01)]
+        if base_row.empty:
+            base_ability = sub_df.iloc[len(sub_df)//2]['Org_Avg_Ability'] # フェイルセーフ
+        else:
+            base_ability = base_row.iloc[0]['Org_Avg_Ability']
+
+        # 1. 機会損失 (Performance Drop)
+        # Abilityが上がれば (Drop < 0) -> Lossはマイナス（＝利益）になる
+        sub_df['Performance_Drop_Ratio'] = 1 - (sub_df['Org_Avg_Ability'] / base_ability)
+        sub_df['Loss_Opportunity'] = sub_df['Performance_Drop_Ratio'] * (revenue_per_emp * employee_count)
+
+        # 2. 採用浪費 (Sunk Cost)
+        wasted_ratio = sub_df['Performance_Drop_Ratio'].clip(lower=0)
+        sub_df['Loss_SunkCost'] = wasted_ratio * (cost_per_hire * employee_count)
+
+        # 3. 総損失
+        sub_df['Total_Loss'] = sub_df['Loss_Opportunity'] + sub_df['Loss_SunkCost']
+        
+        processed_frames.append(sub_df)
+    
+    return pd.concat(processed_frames)
+
+def analyze_peak_performance(df, scenario_name):
+    """指定シナリオにおける最適解（損失最小点）を見つける"""
+    target_df = df[df['Scenario'] == scenario_name]
+    if target_df.empty: return None, None, None
+    
+    # Total_Loss が最小（＝利益最大）の行
+    best_row_idx = target_df['Total_Loss'].idxmin()
+    best_row = target_df.loc[best_row_idx]
+    
+    best_gamma = best_row['Bias_Gamma']
+    min_loss = best_row['Total_Loss']
+    max_ability = best_row['Org_Avg_Ability']
+    
+    return best_gamma, min_loss, max_ability
+
+# ==========================================
+# 3. Main Application
+# ==========================================
+def main():
+    st.title("⚖️ Gender Bias ROI Simulator: Optimization Engine")
+    
+    st.markdown("""
+    **採用基準の最適化による組織パフォーマンス最大化シミュレーション**
+    
+    本ツールは、採用における「バイアス（基準の歪み）」が経済的損失をもたらすか、
+    あるいは特定の戦略的バイアス（ポジティブ・アクション等）が組織IQを高めるかを数理的に特定します。
     """)
 
-    # --- Sidebar: Parameters ---
+    # --- 1. Sidebar Parameters ---
     st.sidebar.header("🔧 Simulation Parameters")
     
-    st.sidebar.subheader("1. 採用基準の設定")
-    threshold_fair = st.sidebar.slider("公正な合格基準 (T*)", 0.5, 1.0, 0.75, 0.05, 
-                                     help="正規分布上の偏差値に相当。0.75は約上位16%選抜を意味します。")
-    sigma = st.sidebar.number_input("能力のばらつき (σ)", 0.1, 0.3, 0.15, 0.01)
-
-    st.sidebar.subheader("2. 市場供給バランス (Supply)")
-    applicant_ratio_m = st.sidebar.slider("応募者の男性比率", 0.0, 1.0, 0.5, 0.05, 
-                                        help="市場における候補者プールの男女比（パイプライン問題の反映）")
-
-    st.sidebar.markdown("---")
-    st.sidebar.subheader("3. シナリオごとの能力仮定")
+    # 採用基準
+    threshold_fair = st.sidebar.slider("公正な合格基準 (T*)", 0.5, 1.0, 0.75, 0.05,
+                                     help="正規分布上の偏差値相当。0.75=上位約16%")
+    sigma = 0.15 # 固定
     
-    # Scenario A
-    with st.sidebar.expander("Scenario A: Ideal World (設定)", expanded=False):
-        st.caption("男女の能力差が完全にない理想的な状態")
-        mu_eq_f = st.number_input("SceA: 女性平均 (μF)", 0.0, 1.0, 0.60, 0.05, key="eq_f")
-        mu_eq_m = st.number_input("SceA: 男性平均 (μM)", 0.0, 1.0, 0.60, 0.05, key="eq_m")
+    # 市場環境
+    applicant_ratio_m = st.sidebar.slider("応募者の男性比率", 0.0, 1.0, 0.5, 0.05,
+                                        help="候補者プールの男女比")
 
-    # Scenario B
-    with st.sidebar.expander("Scenario B: Pew Data (設定)", expanded=True):
-        st.caption("高学歴化により供給側で女性が優位な現実")
-        mu_pew_f = st.number_input("SceB: 女性平均 (μF)", 0.0, 1.0, 0.65, 0.05, key="pew_f")
-        mu_pew_m = st.number_input("SceB: 男性平均 (μM)", 0.0, 1.0, 0.55, 0.05, key="pew_m")
+    # 財務設定
+    employee_count, revenue_per_emp, cost_per_hire = render_financial_sidebar()
 
     st.sidebar.markdown("---")
-    max_gamma = st.sidebar.slider("最大バイアス係数 (Max Gamma)", 0.1, 0.5, 0.2, 0.05,
-                                help="男性基準を最大でどれだけ引き下げるか（0.1 = 偏差値にして約-6.7ポイント相当）")
+    st.sidebar.subheader("3. シナリオ比較設定")
+    
+    # シナリオA: 平等
+    with st.sidebar.expander("Scenario A: Equal Ability (Benchmark)", expanded=True):
+        st.markdown("<small>男女の平均能力が完全に等しい理想状態</small>", unsafe_allow_html=True)
+        mu_eq_f = 0.60
+        mu_eq_m = 0.60
 
-    # --- Execution ---
-    gamma_values = np.linspace(0.0, max_gamma, 21)
+    # シナリオB: 研究データ (Reality/Research)
+    with st.sidebar.expander("Scenario B: Research Case (Pew Data)", expanded=False):
+        st.markdown("<small>女性の社会的スキル等がやや高いとする研究ケース</small>", unsafe_allow_html=True)
+        mu_pew_f = st.slider("SceB: 女性平均", 0.0, 1.0, 0.65, 0.05)
+        mu_pew_m = st.slider("SceB: 男性平均", 0.0, 1.0, 0.55, 0.05)
 
-    # Simulation 1: Equal Ability
-    sim_equal = HiringSimulation(mu_f=mu_eq_f, mu_m=mu_eq_m, sigma=sigma, threshold_fair=threshold_fair)
-    df_equal = sim_equal.run(gamma_values, "Scenario A: Equal Ability", applicant_ratio_m=applicant_ratio_m)
+    st.sidebar.markdown("---")
+    
+    # 現在の立ち位置確認用スライダー
+    current_gamma_input = st.sidebar.slider(
+        "現在の想定バイアス (Current Status)", 
+        min_value=-0.5, max_value=0.5, value=0.1, step=0.05,
+        help="正(+): 男性優遇 / 負(-): 女性登用・実力重視"
+    )
 
-    # Simulation 2: Pew Data
-    sim_pew = HiringSimulation(mu_f=mu_pew_f, mu_m=mu_pew_m, sigma=sigma, threshold_fair=threshold_fair)
-    df_pew = sim_pew.run(gamma_values, "Scenario B: Pew Data (Reality)", applicant_ratio_m=applicant_ratio_m)
+    # --- 2. Execution ---
+    gamma_values = np.linspace(-0.5, 0.5, 101)
 
-    # Combine Data
+    sim_equal = HiringSimulation(mu_eq_f, mu_eq_m, sigma, threshold_fair)
+    df_equal = sim_equal.run(gamma_values, "Scenario A: Equal Ability", applicant_ratio_m)
+
+    sim_pew = HiringSimulation(mu_pew_f, mu_pew_m, sigma, threshold_fair)
+    df_pew = sim_pew.run(gamma_values, "Scenario B: Research Case (Pew Data)", applicant_ratio_m)
+
     df_combined = pd.concat([df_equal, df_pew])
+    df_final = calculate_financial_loss(df_combined, employee_count, revenue_per_emp, cost_per_hire)
 
-    # --- Visualization ---
-    st.subheader("📊 Simulation Results")
+    # --- 3. Dashboard ---
+    st.subheader("📊 Optimization Dashboard")
     
-    col1, col2 = st.columns(2)
+    # ピーク分析
+    opt_gamma, opt_loss, opt_ability = analyze_peak_performance(df_final, "Scenario B: Research Case (Pew Data)")
     
-    # Plot Style Settings
-    sns.set_style("whitegrid")
-    colors = {"Scenario A: Equal Ability": "tab:blue", "Scenario B: Pew Data (Reality)": "tab:orange"}
+    # 現在地メトリクス
+    def get_metrics_at_gamma(df, scenario, g):
+        target = df[df['Scenario'] == scenario]
+        row = target.iloc[(target['Bias_Gamma'] - g).abs().argsort()[:1]].iloc[0]
+        return row
 
+    current_row = get_metrics_at_gamma(df_final, "Scenario B: Research Case (Pew Data)", current_gamma_input)
+    
+    # Metrics Display
+    col1, col2, col3, col4 = st.columns(4)
+    
     with col1:
-        st.markdown("##### 📉 組織の平均能力 (Organizational IQ)")
-        fig1, ax1 = plt.subplots(figsize=(6, 4))
-        sns.lineplot(data=df_combined, x="Bias_Gamma", y="Org_Avg_Ability", 
-                     hue="Scenario", palette=colors, style="Scenario", markers=True, ax=ax1, linewidth=2)
-        ax1.set_xlabel("Bias (Gamma): Reduction in Male Standard")
-        ax1.set_ylabel("Average Ability")
-        ax1.set_title("Degradation of Org Productivity")
-        st.pyplot(fig1)
-        st.caption("バイアス（横軸）が強まるほど、組織IQ（縦軸）が低下する様子。")
-
+        st.metric("Current Bias", f"{current_gamma_input:.2f}", help="現在の設定値")
+    
     with col2:
-        st.markdown("##### 📈 組織内の男性比率 (Male Share)")
-        fig2, ax2 = plt.subplots(figsize=(6, 4))
-        sns.lineplot(data=df_combined, x="Bias_Gamma", y="Male_Share", 
-                     hue="Scenario", palette=colors, style="Scenario", markers=True, ax=ax2, linewidth=2)
-        # 応募者比率を点線で表示（これが「自然な状態」）
-        ax2.axhline(applicant_ratio_m, color='green', linestyle=':', alpha=0.7, label="Applicant Ratio (Supply)")
-        ax2.axhline(0.5, color='gray', linestyle='--', alpha=0.5, label="50% Parity")
+        val = current_row['Total_Loss']
+        is_profit = val < 0
+        label = "Estimated Impact"
+        display_val = f"¥{abs(val)/100_000_000:,.1f} 億円"
         
-        ax2.set_xlabel("Bias (Gamma): Reduction in Male Standard")
-        ax2.set_ylabel("Male Share (Ratio)")
-        ax2.set_ylim(0, 1.0)
-        ax2.set_title("Rise of Male Dominance")
-        ax2.legend()
-        st.pyplot(fig2)
-        st.caption(f"緑点線は応募者の男性比率（{applicant_ratio_m:.0%}）。ここから乖離して男性比率が上がるほど、採用基準が歪んでいることを示す。")
+        if is_profit:
+            st.metric(label + " (Profit)", display_val, delta=f"+¥{abs(val):,.0f} Gain", delta_color="normal")
+        else:
+            st.metric(label + " (Loss)", display_val, delta=f"-¥{val:,.0f} Loss", delta_color="inverse")
 
-    # --- Data Table & Insights ---
+    with col3:
+        if opt_loss is not None:
+            potential_gain = current_row['Total_Loss'] - opt_loss
+            st.metric("Optimization Potential", f"¥{potential_gain/100_000_000:,.1f} 億円", 
+                      help="バイアスを最適値に変更することで得られる追加利益", delta="Up is Good")
+    
+    with col4:
+        st.metric("Optimal Bias Point", f"{opt_gamma:.2f}", 
+                  help="組織利益が最大化するバイアス値", delta_color="off")
+
     st.markdown("---")
-    st.subheader("📋 Key Metrics Summary")
-    
-    st.markdown("バイアス最大時 (Max Gamma) と公正時 (Zero Bias) の比較")
-    
-    cols_to_show = ["Scenario", "Bias_Gamma", "Org_Avg_Ability", "Male_Share", "Productivity Gap"]
-    # Add Productivity Gap calculation
-    df_combined["Productivity Gap"] = df_combined["Female_Avg_Ability"] - df_combined["Male_Avg_Ability"]
-    
-    # Filter for display (0.0, mid, max)
-    mid_gamma = round(max_gamma / 2, 2)
-    filter_mask = df_combined["Bias_Gamma"].round(2).isin([0.0, mid_gamma, round(max_gamma, 2)])
-    
-    st.dataframe(df_combined[filter_mask][cols_to_show].style.format({
-        "Bias_Gamma": "{:.2f}",
-        "Org_Avg_Ability": "{:.3f}",
-        "Male_Share": "{:.1%}",
-        "Productivity Gap": "{:.3f}"
-    }))
 
-    # 動的なインサイト生成
-    base_male_share_pew = df_pew[df_pew["Bias_Gamma"]==0.0]["Male_Share"].values[0]
+    # --- 4. Visualization ---
+    tab1, tab2 = st.tabs(["📉 Profit/Loss Curve (Optimization)", "📈 Org Parameters"])
     
-    st.info(f"""
-    **💡 分析のインサイト:**
-    - **パイプラインの影響:** 応募者の男性比率を {applicant_ratio_m:.0%} に設定しています。
-    - **公正採用時の結果:** Scenario B (現実) において、公正な採用を行うと、組織内の男性比率は **{base_male_share_pew:.1%}** となります。
-    - **経営リスク:** もし、この状態で「男性比率 50%」や「応募比率並みの {applicant_ratio_m:.0%}」を目指してバイアスをかけると、
-      その差分を埋めるために大量の「基準以下の候補者」を採用することになり、組織IQの劣化（グラフ左）が加速します。
-    """)
+    colors = {"Scenario A: Equal Ability": "tab:blue", "Scenario B: Research Case (Pew Data)": "tab:orange"}
+
+    with tab1:
+        st.markdown("**💰 Financial Impact Landscape**")
+        fig_fin, ax_fin = plt.subplots(figsize=(10, 6))
+        
+        ax_fin.axhline(0, color='black', linewidth=1, linestyle='-')
+        sns.lineplot(data=df_final, x="Bias_Gamma", y=df_final["Total_Loss"]/100000000, 
+                     hue="Scenario", palette=colors, style="Scenario", linewidth=2.5, ax=ax_fin)
+        
+        ax_fin.axvspan(-0.5, 0, color='blue', alpha=0.05, label="Strict Male Selection")
+        ax_fin.axvspan(0, 0.5, color='red', alpha=0.05, label="Male Favoritism")
+        
+        if opt_gamma is not None and abs(opt_gamma) > 0.01:
+            ax_fin.axvline(opt_gamma, color='green', linestyle='--', linewidth=2, label=f"Optimal: {opt_gamma:.2f}")
+            ax_fin.plot(opt_gamma, opt_loss/100000000, 'go', markersize=10)
+
+        ax_fin.axvline(current_gamma_input, color='gray', linestyle=':', linewidth=2, label="Current Position")
+
+        ax_fin.set_xlabel("Bias Gamma (◀ Female Priority | Neutral | Male Priority ▶)")
+        ax_fin.set_ylabel("Financial Impact (Low/Negative is Good) [100M JPY]")
+        ax_fin.set_title("Profit Optimization Curve")
+        ax_fin.legend()
+        ax_fin.grid(True, linestyle='--', alpha=0.5)
+        st.pyplot(fig_fin)
+        
+        if opt_loss < 0:
+            msg_type = st.success
+            msg_text = f"""
+            **🧪 理論上の最大ポテンシャル (Theoretical Optimization Value):**
+            Scenario Bの統計仮定に基づき計算すると、バイアス係数 **{opt_gamma:.2f}** （女性積極登用/男性厳格化）の地点で、
+            組織ROIが数理的に最大化されるという試算結果となりました。
+            
+            これにより、公平時(0)と比較して **年間 {abs(opt_loss)/100000000:,.1f} 億円** の付加価値創出が理論上可能と算出されます。
+            """
+        else:
+            msg_type = st.info
+            msg_text = "**ℹ️ 分析結果:** Scenario A（能力均等）の仮定下では、バイアス **0.0 (公平)** が最も損失を最小化する数理的最適解となります。"
+        msg_type(msg_text)
+
+    # ---------------------------------------------------------
+    # Tab 2: ここが修正されたナラティブ復活箇所です
+    # ---------------------------------------------------------
+    with tab2:
+        col_a, col_b = st.columns(2)
+        
+        # --- 左側: 組織平均能力 ---
+        with col_a:
+            st.markdown("##### 🧠 Org Average Ability (組織IQ)")
+            fig1, ax1 = plt.subplots(figsize=(6, 4))
+            sns.lineplot(data=df_final, x="Bias_Gamma", y="Org_Avg_Ability", hue="Scenario", palette=colors, ax=ax1)
+            ax1.set_xlabel("Bias Gamma")
+            ax1.set_ylabel("Average Ability Score")
+            ax1.axvline(0, color='gray', linestyle=':')
+            st.pyplot(fig1)
+            
+            # 【復活】組織能力に関する鋭利な解説
+            st.info("""
+            **▼グラフの読み解き:**
+            **左端（Bias=0）が組織IQの最大ポテンシャル（Potential Max）です。**
+            ここから右へ進む（バイアスをかける）ことは、すべて経営資源の毀損を意味します。
+            特に「Reality（オレンジ）」では、本来採用すべき優秀な女性を弾くため、劣化がより激しくなります。
+            """)
+
+        # --- 右側: 男性比率 ---
+        with col_b:
+            st.markdown("##### 👥 Male Share (男性比率)")
+            fig2, ax2 = plt.subplots(figsize=(6, 4))
+            sns.lineplot(data=df_final, x="Bias_Gamma", y="Male_Share", hue="Scenario", palette=colors, ax=ax2)
+            
+            # 参照ラインの描画
+            ax2.axhline(applicant_ratio_m, color='green', linestyle=':', label=f"Applicant Ratio ({applicant_ratio_m:.0%})")
+            ax2.axvline(0, color='gray', linestyle=':')
+            ax2.set_xlabel("Bias Gamma")
+            ax2.legend()
+            st.pyplot(fig2)
+            
+            # 【復活】男性比率に関する冷徹な指摘
+            st.warning(f"""
+            **▼グラフの読み解き:**
+            緑の点線（応募比率 {applicant_ratio_m:.0%}）や灰色の点線（50%）を超えて男性比率が上昇している領域は、
+            **「統計的に能力不足の男性」が下駄を履いて流入している**ことを示唆します。
+            「50%」を目指すことが目的化すると、組織の質は必然的に低下します。
+            """)
 
     # --- Footer ---
     st.markdown("""
+        <div class="disclaimer">
+            **⚠️ 免責事項 (Optimization Model Disclaimer)**<br>
+            本シミュレーションの「マイナス領域（女性登用/男性厳格化）」における利益算出は、
+            「Scenario B（女性の平均能力が高い）」という特定の統計仮定に基づいた理論値です。
+            実際の採用戦略においては、法的な公平性や組織のコンテキストを考慮する必要があります。
+        </div>
         <div class="footer">
-            Created by: Keisuke Nakamura | 
-            <a href="https://github.com/keisuke-data-lab" target="_blank">GitHub: https://github.com/keisuke-data-lab</a>
+            Gender Bias ROI Simulator | © 2026 Keisuke Data Lab
         </div>
     """, unsafe_allow_html=True)
 
