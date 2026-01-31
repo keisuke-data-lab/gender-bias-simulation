@@ -75,39 +75,21 @@ pip install -r requirements.txt
 # 3. Run simulation (Web Dashboard)
 streamlit run app.py
 ```
-
-🧩 Positioning
+## 🧩 Positioning
 本プロジェクトは、学術研究用の厳密モデルでも、活動家のための啓蒙ツールでもありません。
 
-「人的資本リスクを構造として理解し、冷徹な経営判断を下すためのDSS（意思決定支援）プロトタイプ」
+> **「人的資本リスクを構造として理解し、冷徹な経営判断を下すためのDSS（意思決定支援）プロトタイプ」**
 
 として設計されています。
 
-🔗 Related Projects
-🛡️ Strategic Organization Resilience Simulator - 人材離職連鎖と組織崩壊リスクの構造分析
+## 🔗 Related Projects
+* **🛡️ Strategic Organization Resilience Simulator** - 人材離職連鎖と組織崩壊リスクの構造分析
+* **⚖️ DX Project Risk Diagnostic** - 炎上DX案件の構造類似度診断
+* **💸 DX Project Budget Simulator** - 技術的負債による赤字額シミュレーション
 
-⚖️ DX Project Risk Diagnostic - 炎上DX案件の構造類似度診断
+<br>
 
-💸 DX Project Budget Simulator - 技術的負債による赤字額シミュレーション
-
-<div align="center"> Author: <b>Keisuke Nakamura</b>
-
-
-Structural Modeling / Governance Risk / Human Capital Simulation </div>
-
-
------
-
-### 🛠️ 修正・適応のためのGitコマンド
-
-READMEを上記の内容に書き換えた後、以下のコマンドでGitHubに反映させてください。
-
-```powershell
-# 1. 変更をステージング
-git add README.md
-
-# 2. コミット（メッセージ: ドキュメントのビジネス視点強化と実装整合性の確保）
-git commit -m "docs: Refine README to align with truncated normal distribution model and ROI features"
-
-# 3. プッシュ
-git push
+<div align="center">
+  Author: <b>Keisuke Nakamura</b><br>
+  Structural Modeling / Governance Risk / Human Capital Simulation
+</div>
