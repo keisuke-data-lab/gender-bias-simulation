@@ -74,6 +74,8 @@ pip install -r requirements.txt
 
 # 3. Run simulation (Web Dashboard)
 streamlit run app.py
+```
+
 🧩 Positioning
 本プロジェクトは、学術研究用の厳密モデルでも、活動家のための啓蒙ツールでもありません。
 
